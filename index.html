@@ -109,7 +109,7 @@
   let scanState = 'pre-scan'; // 'pre-scan', 'scanning', 'paused', 'complete'
   let capturedFrames = [];
   let videoStream = null;
-  const canvas = document.createElement('canvas');
+  let imageCaptureController = null;
 
   const ALIGNMENT_TOLERANCE = 16;
   const ALIGNMENT_HOLD_TIME = 1000;
@@ -138,6 +138,14 @@
     video: { facingMode: 'environment' }
    });
    videoElement.srcObject = videoStream;
+
+    if ('ImageCapture' in window) {
+        const videoTrack = videoStream.getVideoTracks()[0];
+        imageCaptureController = new ImageCapture(videoTrack);
+    } else {
+        console.warn("ImageCapture API not supported. Falling back to lower quality captures.");
+    }
+
    videoElement.onloadedmetadata = () => {
     const { videoWidth, videoHeight } = videoElement;
     const aspectRatio = videoHeight / videoWidth;
@@ -216,21 +224,38 @@
   }
 
   // --- Capture Logic ---
-  function captureFrame() {
-  if (!videoStream) return;
-  const { videoWidth, videoHeight } = videoElement;
-  canvas.width = videoWidth;
-  canvas.height = videoHeight;
-  const context = canvas.getContext('2d');
-  context.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
-  const dataUrl = canvas.toDataURL('image/jpeg');
-  capturedFrames.push(dataUrl);
-  updateProgressDisplay(dataUrl, capturedFrames.length - 1);
-  console.log(`Frame captured. Total frames: ${capturedFrames.length}`);
-  }
+    async function captureFrame() {
+        if (!imageCaptureController) {
+            console.error("Image Capture not available.");
+            // Fallback for browsers that don't support ImageCapture, using canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            canvas.getContext('2d').drawImage(videoElement, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            capturedFrames.push(dataUrl);
+            updateProgressDisplay(dataUrl, capturedFrames.length - 1);
+            console.warn(`Low-res frame captured (fallback). Total frames: ${capturedFrames.length}`);
+            return;
+        }
+
+        try {
+            const blob = await imageCaptureController.takePhoto();
+            const dataUrl = await new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            });
+            capturedFrames.push(dataUrl);
+            updateProgressDisplay(dataUrl, capturedFrames.length - 1);
+            console.log(`High-res frame captured. Total frames: ${capturedFrames.length}`);
+        } catch (error) {
+            console.error('takePhoto() error:', error);
+        }
+    }
 
   // --- Core Logic ---
-  function handleOrientation(event) {
+  async function handleOrientation(event) {
   let { alpha, beta, gamma } = event;
   if (alpha === null || beta === null || gamma === null) return;
    
@@ -272,7 +297,7 @@
    const CAPTURE_WINDOW_DEGREES = 5.0;
 
    if (Math.abs(diff) < CAPTURE_WINDOW_DEGREES) {
-    captureFrame();
+    await captureFrame();
     nextHeadingIndex++; // Immediately look for the next target to avoid double caps
 
     if (capturedFrames.length >= TOTAL_FRAMES) {
@@ -337,14 +362,14 @@
   }
 
   // --- Button Event Listeners ---
-  scanControlBtn.addEventListener('click', () => {
+  scanControlBtn.addEventListener('click', async () => {
   if (scanState === 'pre-scan') {
    scanState = 'scanning';
    appStatus.textContent = 'Rotate slowly to your right';
    scanControlBtn.textContent = 'Pause';
    startHeading = currentHeading;
 
-   captureFrame(); // Capture the first frame immediately on start.
+   await captureFrame(); // Capture the first frame immediately on start.
 
    targetHeadings = [];
    nextHeadingIndex = 0;
