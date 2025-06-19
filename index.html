@@ -124,7 +124,7 @@
   let currentReviewIndex = -1;
   let touchStartX = 0;
   let isZoomed = false;
-  let lastTapTime = 0;
+  let tapTimer = null;
   const DOUBLE_TAP_DELAY = 300; // ms
 
   // --- Permission Handling (unchanged part) ---
@@ -201,6 +201,8 @@
   }
 
   function hideReviewImage() {
+    clearTimeout(tapTimer);
+    tapTimer = null;
     reviewOverlay.style.display = 'none';
     currentReviewIndex = -1;
     if (isZoomed) {
@@ -371,39 +373,49 @@
   rescanBtn.addEventListener('click', resetScan);
 
   reviewOverlay.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
+    // We only need to record the start position for swipe detection
+    if (!isZoomed) {
+        touchStartX = e.changedTouches[0].screenX;
+    }
   }, { passive: true });
 
   reviewOverlay.addEventListener('touchend', (e) => {
-    const touchEndX = e.changedTouches[0].screenX;
-    const deltaX = touchEndX - touchStartX;
-    const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe in pixels
-    const isTap = Math.abs(deltaX) < SWIPE_THRESHOLD;
-    const currentTime = new Date().getTime();
-    const timeSinceLastTap = currentTime - lastTapTime;
-
+    e.preventDefault(); // Prevent ghost clicks
+    
     if (isZoomed) {
-        if (isTap) { toggleZoom(); }
-        lastTapTime = currentTime;
+        // If zoomed in, any tap will zoom out.
+        toggleZoom();
         return;
     }
 
-    if (isTap && timeSinceLastTap < DOUBLE_TAP_DELAY) {
-        toggleZoom();
-        lastTapTime = 0; // Prevent a third tap from triggering a close
-    } else if (isTap) {
-        hideReviewImage();
-        lastTapTime = currentTime;
-    } else { // It's a swipe
-        if (deltaX < -SWIPE_THRESHOLD) {
-            // Swipe Left (next image)
+    const touchEndX = e.changedTouches[0].screenX;
+    const deltaX = touchEndX - touchStartX;
+    const SWIPE_THRESHOLD = 50;
+    const isSwipe = Math.abs(deltaX) > SWIPE_THRESHOLD;
+
+    if (isSwipe) {
+        clearTimeout(tapTimer);
+        tapTimer = null;
+        if (deltaX < 0) { // Swipe Left
             currentReviewIndex = (currentReviewIndex + 1) % capturedFrames.length;
-        } else if (deltaX > SWIPE_THRESHOLD) {
-            // Swipe Right (previous image)
+        } else { // Swipe Right
             currentReviewIndex = (currentReviewIndex - 1 + capturedFrames.length) % capturedFrames.length;
         }
         reviewImage.src = capturedFrames[currentReviewIndex];
-        lastTapTime = 0; // Swipes shouldn't count towards double-tap timing
+    } else {
+        // It's a tap. Check for double-tap.
+        if (tapTimer === null) {
+            // First tap, set a timer to act on a single tap.
+            tapTimer = setTimeout(() => {
+                tapTimer = null; // reset timer
+                hideReviewImage();
+            }, DOUBLE_TAP_DELAY);
+        } else {
+            // Second tap arrived within the delay, it's a double-tap.
+            clearTimeout(tapTimer);
+            tapTimer = null;
+            toggleZoom();
+        }
     }
   });
 
