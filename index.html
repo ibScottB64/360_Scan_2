@@ -398,26 +398,25 @@
   rescanBtn.addEventListener('click', resetScan);
 
   reviewOverlay.addEventListener('touchstart', (e) => {
-    // We only need to record the start position for swipe detection
-    if (!isZoomed) {
-        touchStartX = e.changedTouches[0].screenX;
-    }
+    touchStartX = e.changedTouches[0].screenX;
   }, { passive: true });
 
   reviewOverlay.addEventListener('touchend', (e) => {
     e.preventDefault(); // Prevent ghost clicks
     
-    if (isZoomed) {
-        // If zoomed in, any tap will zoom out.
-        toggleZoom();
-        return;
-    }
-
     const touchEndX = e.changedTouches[0].screenX;
     const deltaX = touchEndX - touchStartX;
     const SWIPE_THRESHOLD = 50;
     const isSwipe = Math.abs(deltaX) > SWIPE_THRESHOLD;
 
+    if (isZoomed) {
+        // If zoomed in, a tap un-zooms. A swipe (pan) does nothing.
+        if (!isSwipe) {
+            toggleZoom();
+        }
+        return;
+    }
+    
     if (isSwipe) {
         clearTimeout(tapTimer);
         tapTimer = null;
