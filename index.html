@@ -119,7 +119,8 @@
    videoElement.srcObject = videoStream;
    videoElement.onloadedmetadata = () => {
     const { videoWidth, videoHeight } = videoElement;
-    const aspectRatio = videoHeight / videoHeight;
+    // FIX: Corrected typo from videoHeight/videoHeight to videoHeight/videoWidth
+    const aspectRatio = videoHeight / videoWidth;
     cameraViewContainer.style.setProperty('--aspect-ratio', aspectRatio);
     cameraViewContainer.style.paddingBottom = `calc(100% * var(--aspect-ratio, 1.3333))`;
    };
@@ -291,8 +292,8 @@
   scanControlBtn.textContent = 'Start';
   submitBtn.disabled = false;
   rescanBtn.disabled = false;
-  hideReviewImage(); // Hide review and restore SVGs.
-  targetSVG.classList.remove('hidden'); // Explicitly show on reset
+  reviewOverlay.classList.add('hidden'); 
+  targetSVG.classList.remove('hidden'); 
   helperSVG.classList.remove('hidden');
   videoElement.play();
   setAlignedState(false); 
