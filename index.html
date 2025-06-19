@@ -196,12 +196,15 @@
       reviewImage.classList.toggle('zoomed-in', isZoomed);
       
       if (isZoomed) {
-          // After zooming in, center the image to allow panning in all directions.
+          reviewOverlay.style.justifyContent = 'flex-start';
+          reviewOverlay.style.alignItems = 'flex-start';
           requestAnimationFrame(() => {
             reviewOverlay.scrollLeft = (reviewImage.scrollWidth - reviewOverlay.clientWidth) / 2;
             reviewOverlay.scrollTop = (reviewImage.scrollHeight - reviewOverlay.clientHeight) / 2;
           });
       } else {
+          reviewOverlay.style.justifyContent = 'center';
+          reviewOverlay.style.alignItems = 'center';
           reviewOverlay.scrollTop = 0;
           reviewOverlay.scrollLeft = 0;
       }
