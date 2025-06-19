@@ -125,6 +125,7 @@
   let capturedFrames = [];
   let videoStream = null;
   let imageCaptureController = null;
+  let isCapturing = false;
 
   const ALIGNMENT_TOLERANCE = 16;
   const ALIGNMENT_HOLD_TIME = 1000;
@@ -288,6 +289,8 @@
    
   currentHeading = alpha; // Store the current compass heading
 
+  if (isCapturing) return; // Don't update UI guides while a photo is being processed.
+
   let yTranslatePercent = 0;
   if (beta <= TARGET_PITCH) { const progress = beta / TARGET_PITCH; yTranslatePercent = -50 + (progress * 50); } 
   else { const progress = (beta - TARGET_PITCH) / (180 - TARGET_PITCH); yTranslatePercent = progress * 50; }
@@ -324,19 +327,21 @@
    const CAPTURE_WINDOW_DEGREES = 5.0;
 
    if (Math.abs(diff) < CAPTURE_WINDOW_DEGREES) {
-    await captureFrame();
-    nextHeadingIndex++; // Immediately look for the next target to avoid double caps
+        isCapturing = true; // Set the lock
+        await captureFrame();
+        nextHeadingIndex++; // Immediately look for the next target to avoid double caps
 
-    if (capturedFrames.length >= TOTAL_FRAMES) {
-     scanState = 'complete';
-     appStatus.textContent = 'Scan Complete';
-     document.getElementById('scanning-controls').classList.add('hidden');
-     document.getElementById('scan-complete-controls').classList.remove('hidden');
-     videoElement.pause();
-     targetSVG.classList.add('hidden');
-     helperSVG.classList.add('hidden');
+        if (capturedFrames.length >= TOTAL_FRAMES) {
+            scanState = 'complete';
+            appStatus.textContent = 'Scan Complete';
+            document.getElementById('scanning-controls').classList.add('hidden');
+            document.getElementById('scan-complete-controls').classList.remove('hidden');
+            videoElement.pause();
+             targetSVG.classList.add('hidden');
+             helperSVG.classList.add('hidden');
+        }
+        isCapturing = false; // Release the lock
     }
-   }
   }
   }
 
@@ -373,6 +378,7 @@
   capturedFrames = [];
   targetHeadings = [];
   nextHeadingIndex = 0;
+  isCapturing = false; // Ensure lock is released on reset
   progressDisplay.innerHTML = '';
   document.getElementById('scanning-controls').classList.remove('hidden');
   document.getElementById('scan-complete-controls').classList.add('hidden');
@@ -390,13 +396,16 @@
 
   // --- Button Event Listeners ---
   scanControlBtn.addEventListener('click', async () => {
-  if (scanState === 'pre-scan') {
+  if (scanState === 'pre-scan' || isCapturing) {
+    if (isCapturing) return; // Prevent multiple clicks while first frame is processing
    scanState = 'scanning';
    appStatus.textContent = 'Rotate slowly to your right';
    scanControlBtn.textContent = 'Pause';
    startHeading = currentHeading;
 
+    isCapturing = true;
    await captureFrame(); // Capture the first frame immediately on start.
+    isCapturing = false;
 
    targetHeadings = [];
    nextHeadingIndex = 0;
