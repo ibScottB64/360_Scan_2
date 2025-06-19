@@ -116,6 +116,8 @@
   let targetHeadings = [], nextHeadingIndex = 0;
   let smoothedRoll = 0;
   const SMOOTHING_FACTOR = 0.1;
+  let currentReviewIndex = -1;
+  let touchStartX = 0;
 
   // --- Permission Handling (unchanged part) ---
   const permissionOverlay = document.getElementById('permission-overlay');
@@ -164,17 +166,18 @@
   }
 
   // --- Progress Display Logic ---
-  function updateProgressDisplay(frameDataUrl) {
+  function updateProgressDisplay(dataUrl, index) {
   const frameDiv = document.createElement('div');
   frameDiv.className = 'progress-frame';
-  frameDiv.style.backgroundImage = `url(${frameDataUrl})`;
-   frameDiv.addEventListener('click', () => showReviewImage(frameDataUrl));
+  frameDiv.style.backgroundImage = `url(${dataUrl})`;
+   frameDiv.addEventListener('click', () => showReviewImage(index));
   progressDisplay.appendChild(frameDiv);
   }
   
-  function showReviewImage(dataUrl) {
-    if (scanState !== 'paused' && scanState !== 'complete') return;
-    reviewImage.src = dataUrl;
+  function showReviewImage(index) {
+    if ((scanState !== 'paused' && scanState !== 'complete') || index < 0 || index >= capturedFrames.length) return;
+    currentReviewIndex = index;
+    reviewImage.src = capturedFrames[currentReviewIndex];
     reviewOverlay.style.display = 'flex';
     targetSVG.classList.add('hidden');
     helperSVG.classList.add('hidden');
@@ -182,6 +185,7 @@
 
   function hideReviewImage() {
     reviewOverlay.style.display = 'none';
+    currentReviewIndex = -1;
     // Only show alignment tools again if the scan is not complete.
     if (scanState !== 'complete') {
         targetSVG.classList.remove('hidden');
@@ -199,7 +203,7 @@
   context.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
   const dataUrl = canvas.toDataURL('image/jpeg');
   capturedFrames.push(dataUrl);
-  updateProgressDisplay(dataUrl);
+  updateProgressDisplay(dataUrl, capturedFrames.length - 1);
   console.log(`Frame captured. Total frames: ${capturedFrames.length}`);
   }
 
@@ -303,6 +307,7 @@
   submitBtn.disabled = false;
   rescanBtn.disabled = false;
   reviewOverlay.style.display = 'none'; 
+  currentReviewIndex = -1;
   targetSVG.classList.remove('hidden'); 
   helperSVG.classList.remove('hidden');
   videoElement.play();
@@ -344,7 +349,29 @@
 
   resetBtn.addEventListener('click', resetScan);
   rescanBtn.addEventListener('click', resetScan);
-    reviewOverlay.addEventListener('click', hideReviewImage);
+
+  reviewOverlay.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+
+  reviewOverlay.addEventListener('touchend', (e) => {
+    let touchEndX = e.changedTouches[0].screenX;
+    let deltaX = touchEndX - touchStartX;
+    const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe in pixels
+
+    if (deltaX < -SWIPE_THRESHOLD) {
+      // Swipe Left (next image)
+      currentReviewIndex = (currentReviewIndex + 1) % capturedFrames.length;
+      reviewImage.src = capturedFrames[currentReviewIndex];
+    } else if (deltaX > SWIPE_THRESHOLD) {
+      // Swipe Right (previous image)
+      currentReviewIndex = (currentReviewIndex - 1 + capturedFrames.length) % capturedFrames.length;
+      reviewImage.src = capturedFrames[currentReviewIndex];
+    } else {
+      // It's a tap, not a swipe
+      hideReviewImage();
+    }
+  });
 
     submitBtn.addEventListener('click', async () => {
         if (capturedFrames.length === 0) {
