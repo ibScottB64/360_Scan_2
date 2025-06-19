@@ -55,6 +55,17 @@
     max-width: none; max-height: none;
     cursor: zoom-out;
  }
+ #review-instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(255,255,255,0.8);
+    font-size: 1rem;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    pointer-events: none; /* Make sure text doesn't block gestures */
+ }
  </style>
 </head>
 <body>
@@ -87,7 +98,10 @@
  <h2>Sensor & Camera Access Required</h2><p>This app needs access to your phone's motion sensors and camera to guide you through the scan.</p>
  <button id="permission-button">Allow Access</button><p id="permission-error"></p>
  </div>
-  <div id="review-overlay" class="hidden"><img id="review-image" alt="Reviewed Frame"></div>
+  <div id="review-overlay" class="hidden">
+      <img id="review-image" alt="Reviewed Frame">
+      <p id="review-instructions">Tap to Exit | Double-Tap to Zoom | Swipe to Scroll</p>
+  </div>
 
  <script>
  document.addEventListener('DOMContentLoaded', () => {
@@ -104,6 +118,7 @@
   const progressDisplay = document.getElementById('progress-display');
   const reviewOverlay = document.getElementById('review-overlay');
   const reviewImage = document.getElementById('review-image');
+  const reviewInstructions = document.getElementById('review-instructions');
    
   let isAligned = false, alignmentTimer = null;
   let scanState = 'pre-scan'; // 'pre-scan', 'scanning', 'paused', 'complete'
@@ -194,6 +209,7 @@
   function toggleZoom() {
       isZoomed = !isZoomed;
       reviewImage.classList.toggle('zoomed-in', isZoomed);
+      reviewInstructions.style.display = isZoomed ? 'none' : 'block';
       
       if (isZoomed) {
           reviewOverlay.style.justifyContent = 'flex-start';
