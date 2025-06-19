@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+ <title>360 Room Scan</title>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+ <style>
+ /* CSS is unchanged */
+ :root {
+  --primary-bg: #FFFFFF; --secondary-bg: #EAEAF0; --camera-bg: #C5C6E0; --accent-color: #007BFF;
+  --accent-text-color: #FFFFFF; --disabled-color: #B0B0B0;
+  --target-color-light: #A3E635;
+  --text-color: #333333; --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+ }
+ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: var(--font-family); background-color: var(--secondary-bg); }
+ .app-container { display: grid; grid-template-rows: auto 1fr auto auto; width: 100%; max-width: 480px; height: 100dvh; margin: 0 auto; background-color: var(--primary-bg); box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+ .app-header { padding: 14px; text-align: center; font-size: 1.3rem; font-weight: 600; border-bottom: 1px solid var(--secondary-bg); }
+ .main-content { display: flex; padding: 12px; gap: 12px; min-height: 0; }
+ .camera-view-container { flex-grow: 1; position: relative; min-width: 0; }
+ .camera-view-container::before { content: ''; display: block; padding-bottom: 133.33%; }
+ .camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--camera-bg); border-radius: 8px; overflow: hidden; }
+ #video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+ .alignment-svg { position: absolute; top: 50%; left: 50%; width: 70%; height: auto; transition: transform 0.05s linear; }
+ #target-svg { transform: translate(-50%, -50%); }
+ #helper-svg { transform: translate(-50%, -50%) scale(0.8); }
+ #target-svg path { fill: var(--target-color-light); }
+ #helper-svg path { transition: fill 0.1s linear; }
+ .control-panel { flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; width: 100px; }
+ .control-button { width: 100%; padding: 16px 10px; font-size: 1.1rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: all 0.1s ease-out; border-style: solid; border-width: 1px; }
+ .control-button:disabled { background-color: var(--disabled-color); color: #FFF; border-color: #999; box-shadow: none; cursor: not-allowed; }
+ .control-button.enabled { background-color: var(--accent-color); color: var(--accent-text-color); border-color: #0056b3; box-shadow: 0 5px 0 0 #0056b3; }
+ .control-button.enabled:active { transform: translateY(3px); box-shadow: 0 2px 0 0 #004a99; }
+ .hidden { display: none; }
+ .progress-display { display: flex; align-items: center; gap: 0; padding: 12px; overflow-x: auto; }
+ .progress-frame { flex-shrink: 0; height: 50px; width: 37.5px; background-color: var(--secondary-bg); border-radius: 4px; border: 1px solid #CCC; background-size: cover; background-position: center; cursor: pointer; }
+ .app-status { padding: 16px; text-align: center; font-size: 1.3rem; font-weight: 500; border-top: 1px solid var(--secondary-bg); }
+ #permission-overlay { position: fixed; top: 0; left: 0; z-index: 100; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; }
+ #permission-overlay.hidden { display: none; }
+ #review-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 10; cursor: pointer; }
+ #review-image { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+ </style>
+</head>
+<body>
+ <div class="app-container">
+ <!-- HTML is unchanged -->
+ <header class="app-header">360 Room Scan</header>
+ <div class="main-content">
+  <div class="camera-view-container" id="camera-view-container">
+  <div class="camera-view" id="camera-view">
+   <video id="video-feed" autoplay playsinline muted></video>
+   <svg id="target-svg" class="alignment-svg" viewBox="0 0 100 100"><path d="M50 5 L95 95 L75 95 L57 55 L43 55 L25 95 L5 95 Z" /></svg>
+   <svg id="helper-svg" class="alignment-svg" viewBox="0 0 100 100"><path d="M50 5 L95 95 L75 95 L57 55 L43 55 L25 95 L5 95 Z" /></svg>
+   <div id="review-overlay" class="hidden"><img id="review-image" alt="Reviewed Frame"></div>
+  </div>
+  </div>
+  <div class="control-panel">
+   <div id="scanning-controls">
+    <button class="control-button" id="scan-control-btn" disabled>Start</button>
+    <button class="control-button enabled hidden" id="reset-btn" style="margin-top: 12px;">Reset</button>
+   </div>
+  <div id="scan-complete-controls" class="hidden">
+    <button class="control-button enabled" id="rescan-btn" style="margin-bottom: 12px;">Rescan</button>
+    <button class="control-button enabled" id="submit-btn">Submit</button>
+  </div>
+  </div>
+ </div>
+ <div class="progress-display" id="progress-display"></div>
+ <footer class="app-status" id="app-status">Align to Start</footer>
+ </div>
+ <div id="permission-overlay">
+ <h2>Sensor & Camera Access Required</h2><p>This app needs access to your phone's motion sensors and camera to guide you through the scan.</p>
+ <button id="permission-button">Allow Access</button><p id="permission-error"></p>
+ </div>
+
+ <script>
+ document.addEventListener('DOMContentLoaded', () => {
+  const cameraViewContainer = document.getElementById('camera-view-container');
+  const videoElement = document.getElementById('video-feed');
+  const targetSVG = document.getElementById('target-svg');
+  const helperSVG = document.getElementById('helper-svg');
+  const helperSVGPath = document.querySelector('#helper-svg path');
+  const scanControlBtn = document.getElementById('scan-control-btn');
+  const resetBtn = document.getElementById('reset-btn');
+  const rescanBtn = document.getElementById('rescan-btn');
+  const submitBtn = document.getElementById('submit-btn');
+  const appStatus = document.getElementById('app-status');
+  const progressDisplay = document.getElementById('progress-display');
+  const reviewOverlay = document.getElementById('review-overlay');
+  const reviewImage = document.getElementById('review-image');
+   
+  let isAligned = false, alignmentTimer = null;
+  let scanState = 'pre-scan'; // 'pre-scan', 'scanning', 'paused', 'complete'
+  let capturedFrames = [];
+  let videoStream = null;
+  const canvas = document.createElement('canvas');
+
+  const ALIGNMENT_TOLERANCE = 16;
+  const ALIGNMENT_HOLD_TIME = 1000;
+  const TARGET_PITCH = 80;
+  const DEGREES_PER_FRAME = 60;
+  const TOTAL_FRAMES = 360 / DEGREES_PER_FRAME;
+
+  let currentHeading = 0, startHeading = 0;
+  let targetHeadings = [], nextHeadingIndex = 0;
+  let smoothedRoll = 0;
+  const SMOOTHING_FACTOR = 0.1;
+
+  // --- Permission Handling (unchanged part) ---
+  const permissionOverlay = document.getElementById('permission-overlay');
+  const permissionBtn = document.getElementById('permission-button');
+  const permissionError = document.getElementById('permission-error');
+   
+  async function initializeApp() {
+  try {
+   videoStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment' }
+   });
+   videoElement.srcObject = videoStream;
+   videoElement.onloadedmetadata = () => {
+    const { videoWidth, videoHeight } = videoElement;
+    const aspectRatio = videoHeight / videoHeight;
+    cameraViewContainer.style.setProperty('--aspect-ratio', aspectRatio);
+    cameraViewContainer.style.paddingBottom = `calc(100% * var(--aspect-ratio, 1.3333))`;
+   };
+   startListening(); 
+  } catch (err) {
+   console.error("Camera error:", err);
+   permissionError.textContent = "Camera access denied or unavailable. Please check permissions and refresh.";
+   permissionBtn.disabled = true;
+   permissionOverlay.classList.remove('hidden');
+  }
+  }
+
+  function startListening() { window.addEventListener('deviceorientation', handleOrientation); permissionOverlay.classList.add('hidden'); }
+   
+  function handlePermission() {
+  if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+   navigator.permissions.query({ name: 'accelerometer' }).then(result => {
+   if (result.state === 'granted') { initializeApp(); }
+   else if (result.state === 'prompt') { permissionBtn.onclick = requestSensorAccess; }
+   else if (result.state === 'denied') { permissionError.textContent = "Sensor access denied."; permissionBtn.disabled = true; }
+   });
+  } else { permissionBtn.onclick = requestSensorAccess; }
+  }
+
+  function requestSensorAccess() {
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+   DeviceOrientationEvent.requestPermission().then(state => {
+   if (state === 'granted') { initializeApp(); } else { permissionError.textContent = "Permission denied."; }
+   }).catch(console.error);
+  } else { initializeApp(); }
+  }
+
+  // --- Progress Display Logic ---
+  function updateProgressDisplay(frameDataUrl) {
+  const frameDiv = document.createElement('div');
+  frameDiv.className = 'progress-frame';
+  frameDiv.style.backgroundImage = `url(${frameDataUrl})`;
+   frameDiv.addEventListener('click', () => showReviewImage(frameDataUrl));
+  progressDisplay.appendChild(frameDiv);
+  }
+  
+  function showReviewImage(dataUrl) {
+    if (scanState !== 'paused' && scanState !== 'complete') return;
+    reviewImage.src = dataUrl;
+    reviewOverlay.classList.remove('hidden');
+    targetSVG.classList.add('hidden');
+    helperSVG.classList.add('hidden');
+  }
+
+  function hideReviewImage() {
+    reviewOverlay.classList.add('hidden');
+    // Only show alignment tools again if the scan is not complete.
+    if (scanState !== 'complete') {
+        targetSVG.classList.remove('hidden');
+        helperSVG.classList.remove('hidden');
+    }
+  }
+
+  // --- Capture Logic ---
+  function captureFrame() {
+  if (!videoStream) return;
+  const { videoWidth, videoHeight } = videoElement;
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+  const context = canvas.getContext('2d');
+  context.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
+  const dataUrl = canvas.toDataURL('image/jpeg');
+  capturedFrames.push(dataUrl);
+  updateProgressDisplay(dataUrl);
+  console.log(`Frame captured. Total frames: ${capturedFrames.length}`);
+  }
+
+  // --- Core Logic ---
+  function handleOrientation(event) {
+  let { alpha, beta, gamma } = event;
+  if (alpha === null || beta === null || gamma === null) return;
+   
+  currentHeading = alpha; // Store the current compass heading
+
+  let yTranslatePercent = 0;
+  if (beta <= TARGET_PITCH) { const progress = beta / TARGET_PITCH; yTranslatePercent = -50 + (progress * 50); } 
+  else { const progress = (beta - TARGET_PITCH) / (180 - TARGET_PITCH); yTranslatePercent = progress * 50; }
+  yTranslatePercent = Math.max(-50, Math.min(50, yTranslatePercent));
+  smoothedRoll = (smoothedRoll * (1 - SMOOTHING_FACTOR)) + (gamma * SMOOTHING_FACTOR);
+  const pitchForScaling = Math.min(Math.abs(beta), TARGET_PITCH);
+  const rotationScale = 1.0 - (0.8 * (pitchForScaling / TARGET_PITCH));
+  const finalRotation = -smoothedRoll * rotationScale;
+  targetSVG.style.transform = `translate(-50%, calc(-50% + ${yTranslatePercent}%)) rotate(${finalRotation}deg)`;
+  const pitchOffset = beta - TARGET_PITCH;
+  const rollOffset = gamma;
+  const misalignment = Math.sqrt(Math.pow(pitchOffset, 2) + Math.pow(rollOffset, 2));
+  helperSVGPath.style.fill = getGradientColor(misalignment);
+  if (scanState === 'pre-scan') {
+   if (misalignment < ALIGNMENT_TOLERANCE) {
+    if (!isAligned && alignmentTimer === null) {
+    alignmentTimer = setTimeout(() => { setAlignedState(true); }, ALIGNMENT_HOLD_TIME);
+    }
+   } else {
+    if (alignmentTimer) { clearTimeout(alignmentTimer); alignmentTimer = null; }
+    if (isAligned) { setAlignedState(false); }
+   }
+  } else if (scanState === 'scanning') {
+   if (nextHeadingIndex >= targetHeadings.length) return; // All targets passed
+
+   const target = targetHeadings[nextHeadingIndex];
+   
+   // Calculate the shortest angle difference to handle 360/0 crossover
+   let diff = target - currentHeading;
+   if (diff > 180) diff -= 360;
+   if (diff < -180) diff += 360;
+   
+   // Define a small window around the target to trigger capture
+   const CAPTURE_WINDOW_DEGREES = 5.0;
+
+   if (Math.abs(diff) < CAPTURE_WINDOW_DEGREES) {
+    captureFrame();
+    nextHeadingIndex++; // Immediately look for the next target to avoid double caps
+
+    if (capturedFrames.length >= TOTAL_FRAMES) {
+     scanState = 'complete';
+     appStatus.textContent = 'Scan Complete';
+     document.getElementById('scanning-controls').classList.add('hidden');
+     document.getElementById('scan-complete-controls').classList.remove('hidden');
+     videoElement.pause();
+     targetSVG.classList.add('hidden');
+     helperSVG.classList.add('hidden');
+    }
+   }
+  }
+  }
+
+  // --- Color Gradient Logic (unchanged) ---
+  const RGB_COLORS = { green: [40, 167, 69], yellow: [255, 193, 7], red: [220, 53, 69] };
+  function interpolate(start, end, progress) { return Math.round(start + progress * (end - start)); }
+  function getGradientColor(misalignment) {
+  const greenPoint = ALIGNMENT_TOLERANCE; const redPoint = ALIGNMENT_TOLERANCE * 5;
+  const yellowPoint = (greenPoint + redPoint) / 2;
+  let startColor, endColor, progress;
+  if (misalignment <= greenPoint) { return `rgb(${RGB_COLORS.green.join(',')})`; }
+  if (misalignment >= redPoint) { return `rgb(${RGB_COLORS.red.join(',')})`; }
+  if (misalignment < yellowPoint) {
+   startColor = RGB_COLORS.green; endColor = RGB_COLORS.yellow; progress = (misalignment - greenPoint) / (yellowPoint - greenPoint);
+  } else {
+   startColor = RGB_COLORS.yellow; endColor = RGB_COLORS.red; progress = (misalignment - yellowPoint) / (redPoint - yellowPoint);
+  }
+  const r = interpolate(startColor[0], endColor[0], progress); const g = interpolate(startColor[1], endColor[1], progress); const b = interpolate(startColor[2], endColor[2], progress);
+  return `rgb(${r},${g},${b})`;
+  }
+
+  // --- UI State Management (unchanged part) ---
+  function setAlignedState(isNowAligned) {
+  isAligned = isNowAligned;
+  scanControlBtn.disabled = !isAligned;
+  scanControlBtn.classList.toggle('enabled', isNowAligned);
+  if (scanState === 'pre-scan') {
+   appStatus.textContent = isAligned ? 'Ready to Start' : 'Align to Start';
+  }
+  }
+
+  function resetScan() {
+  scanState = 'pre-scan';
+  capturedFrames = [];
+  targetHeadings = [];
+  nextHeadingIndex = 0;
+  progressDisplay.innerHTML = '';
+  document.getElementById('scanning-controls').classList.remove('hidden');
+  document.getElementById('scan-complete-controls').classList.add('hidden');
+  resetBtn.classList.add('hidden');
+  scanControlBtn.textContent = 'Start';
+  submitBtn.disabled = false;
+  rescanBtn.disabled = false;
+  hideReviewImage(); // Hide review and restore SVGs.
+  targetSVG.classList.remove('hidden'); // Explicitly show on reset
+  helperSVG.classList.remove('hidden');
+  videoElement.play();
+  setAlignedState(false); 
+  }
+
+  // --- Button Event Listeners ---
+  scanControlBtn.addEventListener('click', () => {
+  if (scanState === 'pre-scan') {
+   scanState = 'scanning';
+   appStatus.textContent = 'Rotate slowly to your right';
+   scanControlBtn.textContent = 'Pause';
+   startHeading = currentHeading;
+
+   captureFrame(); // Capture the first frame immediately on start.
+
+   targetHeadings = [];
+   nextHeadingIndex = 0;
+   // Prepare the remaining target headings.
+   for (let i = 0; i < TOTAL_FRAMES - 1; i++) {
+        const nextTarget = startHeading - ((i + 1) * DEGREES_PER_FRAME);
+        targetHeadings.push((nextTarget % 360 + 360) % 360);
+   }
+  } else if (scanState === 'scanning') {
+   scanState = 'paused';
+   appStatus.textContent = 'Paused. Tap a frame to review.';
+   scanControlBtn.textContent = 'Resume';
+   resetBtn.classList.remove('hidden');
+   videoElement.pause();
+  } else if (scanState === 'paused') {
+   hideReviewImage(); // Ensure review is hidden before resuming.
+   scanState = 'scanning';
+   appStatus.textContent = 'Rotate slowly to your right';
+   scanControlBtn.textContent = 'Pause';
+   resetBtn.classList.add('hidden');
+   videoElement.play();
+  }
+  });
+
+  resetBtn.addEventListener('click', resetScan);
+  rescanBtn.addEventListener('click', resetScan);
+    reviewOverlay.addEventListener('click', hideReviewImage);
+
+    submitBtn.addEventListener('click', async () => {
+        if (capturedFrames.length === 0) {
+            appStatus.textContent = "No frames to submit!";
+            return;
+        }
+
+        appStatus.textContent = "Zipping files...";
+        submitBtn.disabled = true;
+        rescanBtn.disabled = true;
+
+        try {
+            const zip = new JSZip();
+            capturedFrames.forEach((dataUrl, index) => {
+                // Pad index for consistent file naming (e.g., image_01.jpg)
+                const paddedIndex = String(index + 1).padStart(2, '0');
+                // Get raw base64 data by removing the data URL prefix
+                const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
+                zip.file(`image_${paddedIndex}.jpg`, base64Data, { base64: true });
+            });
+
+            const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+            
+            // Create a link to download the zip file
+            const downloadLink = document.createElement('a');
+            const url = URL.createObjectURL(zipBlob);
+            downloadLink.href = url;
+            downloadLink.download = 'room_scan.zip';
+            
+            // Trigger the download
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+
+            // Clean up the object URL
+            URL.revokeObjectURL(url);
+            
+            appStatus.textContent = "Download started!";
+        } catch(err) {
+            console.error("Error creating zip file:", err);
+            appStatus.textContent = "Error creating file!";
+            submitBtn.disabled = false;
+            rescanBtn.disabled = false;
+        }
+    });
+
+  // --- Initial Setup ---
+  if (!window.DeviceOrientationEvent || !navigator.mediaDevices) {
+  permissionError.textContent = "Required browser features (sensors or camera) not supported.";
+  permissionOverlay.classList.remove('hidden');
+  permissionBtn.disabled = true;
+  } else {
+  handlePermission();
+  }
+ });
+ </script>
+</body>
+</html>
