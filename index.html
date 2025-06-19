@@ -144,11 +144,34 @@
   const DOUBLE_TAP_DELAY = 300; // ms
   const GESTURE_THRESHOLD = 50; // Min distance for a swipe/pan
 
-  // --- Permission Handling (unchanged part) ---
+  // --- Permission Handling ---
   const permissionOverlay = document.getElementById('permission-overlay');
   const permissionBtn = document.getElementById('permission-button');
   const permissionError = document.getElementById('permission-error');
    
+  async function requestAllPermissions() {
+    // iOS 13+ requires this to be called in response to a user gesture.
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+            const permissionState = await DeviceOrientationEvent.requestPermission();
+            if (permissionState === 'granted') {
+                // Sensor permission granted, now get camera
+                await initializeApp();
+            } else {
+                permissionError.textContent = "Sensor permission denied.";
+                permissionBtn.disabled = true;
+            }
+        } catch (error) {
+            console.error("Sensor permission error:", error);
+            permissionError.textContent = "Could not get sensor permissions.";
+            permissionBtn.disabled = true;
+        }
+    } else {
+        // This is for non-iOS devices or older iOS versions.
+        await initializeApp();
+    }
+  }
+
   async function initializeApp() {
   try {
    videoStream = await navigator.mediaDevices.getUserMedia({
@@ -169,34 +192,17 @@
     cameraViewContainer.style.setProperty('--aspect-ratio', aspectRatio);
     cameraViewContainer.style.paddingBottom = `calc(100% * var(--aspect-ratio, 1.3333))`;
    };
-   startListening(); 
+   startListening();
+    permissionOverlay.classList.add('hidden'); 
   } catch (err) {
    console.error("Camera error:", err);
-   permissionError.textContent = "Camera access denied or unavailable. Please check permissions and refresh.";
+   permissionError.textContent = "Camera access denied. Please check settings.";
    permissionBtn.disabled = true;
-   permissionOverlay.classList.remove('hidden');
+   permissionOverlay.classList.remove('hidden'); // Ensure overlay is visible if camera fails
   }
   }
 
-  function startListening() { window.addEventListener('deviceorientation', handleOrientation); permissionOverlay.classList.add('hidden'); }
-   
-  function handlePermission() {
-  if (navigator.permissions && typeof navigator.permissions.query === 'function') {
-   navigator.permissions.query({ name: 'accelerometer' }).then(result => {
-   if (result.state === 'granted') { initializeApp(); }
-   else if (result.state === 'prompt') { permissionBtn.onclick = requestSensorAccess; }
-   else if (result.state === 'denied') { permissionError.textContent = "Sensor access denied."; permissionBtn.disabled = true; }
-   });
-  } else { permissionBtn.onclick = requestSensorAccess; }
-  }
-
-  function requestSensorAccess() {
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-   DeviceOrientationEvent.requestPermission().then(state => {
-   if (state === 'granted') { initializeApp(); } else { permissionError.textContent = "Permission denied."; }
-   }).catch(console.error);
-  } else { initializeApp(); }
-  }
+  function startListening() { window.addEventListener('deviceorientation', handleOrientation); }
 
   // --- Progress Display Logic ---
   function updateProgressDisplay(dataUrl, index) {
@@ -521,11 +527,12 @@
 
   // --- Initial Setup ---
   if (!window.DeviceOrientationEvent || !navigator.mediaDevices) {
-  permissionError.textContent = "Required browser features (sensors or camera) not supported.";
-  permissionOverlay.classList.remove('hidden');
-  permissionBtn.disabled = true;
+      permissionError.textContent = "Required browser features not supported.";
+      permissionOverlay.classList.remove('hidden');
+      permissionBtn.disabled = true;
   } else {
-  handlePermission();
+      permissionOverlay.classList.remove('hidden');
+      permissionBtn.onclick = requestAllPermissions;
   }
  });
  </script>
