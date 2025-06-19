@@ -37,8 +37,18 @@
  .app-status { padding: 16px; text-align: center; font-size: 1.3rem; font-weight: 500; border-top: 1px solid var(--secondary-bg); }
  #permission-overlay { position: fixed; top: 0; left: 0; z-index: 100; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; }
  #permission-overlay.hidden { display: none; }
- #review-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 10; cursor: pointer; }
- #review-image { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+ #review-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.9);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 200;
+    cursor: pointer;
+ }
+ #review-image {
+    max-width: 95%; max-height: 95%;
+    object-fit: contain;
+ }
  </style>
 </head>
 <body>
@@ -51,7 +61,6 @@
    <video id="video-feed" autoplay playsinline muted></video>
    <svg id="target-svg" class="alignment-svg" viewBox="0 0 100 100"><path d="M50 5 L95 95 L75 95 L57 55 L43 55 L25 95 L5 95 Z" /></svg>
    <svg id="helper-svg" class="alignment-svg" viewBox="0 0 100 100"><path d="M50 5 L95 95 L75 95 L57 55 L43 55 L25 95 L5 95 Z" /></svg>
-   <div id="review-overlay" class="hidden"><img id="review-image" alt="Reviewed Frame"></div>
   </div>
   </div>
   <div class="control-panel">
@@ -72,6 +81,7 @@
  <h2>Sensor & Camera Access Required</h2><p>This app needs access to your phone's motion sensors and camera to guide you through the scan.</p>
  <button id="permission-button">Allow Access</button><p id="permission-error"></p>
  </div>
+  <div id="review-overlay" class="hidden"><img id="review-image" alt="Reviewed Frame"></div>
 
  <script>
  document.addEventListener('DOMContentLoaded', () => {
@@ -119,7 +129,6 @@
    videoElement.srcObject = videoStream;
    videoElement.onloadedmetadata = () => {
     const { videoWidth, videoHeight } = videoElement;
-    // FIX: Corrected typo from videoHeight/videoHeight to videoHeight/videoWidth
     const aspectRatio = videoHeight / videoWidth;
     cameraViewContainer.style.setProperty('--aspect-ratio', aspectRatio);
     cameraViewContainer.style.paddingBottom = `calc(100% * var(--aspect-ratio, 1.3333))`;
