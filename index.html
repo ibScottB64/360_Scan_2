@@ -175,13 +175,13 @@
   function showReviewImage(dataUrl) {
     if (scanState !== 'paused' && scanState !== 'complete') return;
     reviewImage.src = dataUrl;
-    reviewOverlay.classList.remove('hidden');
+    reviewOverlay.style.display = 'flex';
     targetSVG.classList.add('hidden');
     helperSVG.classList.add('hidden');
   }
 
   function hideReviewImage() {
-    reviewOverlay.classList.add('hidden');
+    reviewOverlay.style.display = 'none';
     // Only show alignment tools again if the scan is not complete.
     if (scanState !== 'complete') {
         targetSVG.classList.remove('hidden');
@@ -302,7 +302,7 @@
   scanControlBtn.textContent = 'Start';
   submitBtn.disabled = false;
   rescanBtn.disabled = false;
-  reviewOverlay.classList.add('hidden'); 
+  reviewOverlay.style.display = 'none'; 
   targetSVG.classList.remove('hidden'); 
   helperSVG.classList.remove('hidden');
   videoElement.play();
