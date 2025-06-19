@@ -289,8 +289,6 @@
    
   currentHeading = alpha; // Store the current compass heading
 
-  if (isCapturing) return; // Don't update UI guides while a photo is being processed.
-
   let yTranslatePercent = 0;
   if (beta <= TARGET_PITCH) { const progress = beta / TARGET_PITCH; yTranslatePercent = -50 + (progress * 50); } 
   else { const progress = (beta - TARGET_PITCH) / (180 - TARGET_PITCH); yTranslatePercent = progress * 50; }
@@ -318,18 +316,16 @@
 
    const target = targetHeadings[nextHeadingIndex];
    
-   // Calculate the shortest angle difference to handle 360/0 crossover
    let diff = target - currentHeading;
    if (diff > 180) diff -= 360;
    if (diff < -180) diff += 360;
    
-   // Define a small window around the target to trigger capture
    const CAPTURE_WINDOW_DEGREES = 5.0;
 
-   if (Math.abs(diff) < CAPTURE_WINDOW_DEGREES) {
+   if (!isCapturing && Math.abs(diff) < CAPTURE_WINDOW_DEGREES) {
         isCapturing = true; // Set the lock
         await captureFrame();
-        nextHeadingIndex++; // Immediately look for the next target to avoid double caps
+        nextHeadingIndex++;
 
         if (capturedFrames.length >= TOTAL_FRAMES) {
             scanState = 'complete';
@@ -396,8 +392,8 @@
 
   // --- Button Event Listeners ---
   scanControlBtn.addEventListener('click', async () => {
-  if (scanState === 'pre-scan' || isCapturing) {
-    if (isCapturing) return; // Prevent multiple clicks while first frame is processing
+  if (isCapturing) return; // Prevent frantic double-clicks
+  if (scanState === 'pre-scan') {
    scanState = 'scanning';
    appStatus.textContent = 'Rotate slowly to your right';
    scanControlBtn.textContent = 'Pause';
