@@ -122,10 +122,11 @@
   let smoothedRoll = 0;
   const SMOOTHING_FACTOR = 0.1;
   let currentReviewIndex = -1;
-  let touchStartX = 0;
+  let touchStartX = 0, touchStartY = 0;
   let isZoomed = false;
   let tapTimer = null;
   const DOUBLE_TAP_DELAY = 300; // ms
+  const GESTURE_THRESHOLD = 50; // Min distance for a swipe/pan
 
   // --- Permission Handling (unchanged part) ---
   const permissionOverlay = document.getElementById('permission-overlay');
@@ -193,7 +194,14 @@
   function toggleZoom() {
       isZoomed = !isZoomed;
       reviewImage.classList.toggle('zoomed-in', isZoomed);
-      if (!isZoomed) {
+      
+      if (isZoomed) {
+          // After zooming in, center the image to allow panning in all directions.
+          requestAnimationFrame(() => {
+            reviewOverlay.scrollLeft = (reviewImage.scrollWidth - reviewOverlay.clientWidth) / 2;
+            reviewOverlay.scrollTop = (reviewImage.scrollHeight - reviewOverlay.clientHeight) / 2;
+          });
+      } else {
           reviewOverlay.scrollTop = 0;
           reviewOverlay.scrollLeft = 0;
       }
@@ -399,43 +407,42 @@
 
   reviewOverlay.addEventListener('touchstart', (e) => {
     touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
   }, { passive: true });
 
   reviewOverlay.addEventListener('touchend', (e) => {
-    e.preventDefault(); // Prevent ghost clicks
+    e.preventDefault(); 
     
     const touchEndX = e.changedTouches[0].screenX;
+    const touchEndY = e.changedTouches[0].screenY;
     const deltaX = touchEndX - touchStartX;
-    const SWIPE_THRESHOLD = 50;
-    const isSwipe = Math.abs(deltaX) > SWIPE_THRESHOLD;
+    const deltaY = touchEndY - touchStartY;
+    const isPan = Math.abs(deltaX) > GESTURE_THRESHOLD || Math.abs(deltaY) > GESTURE_THRESHOLD;
 
     if (isZoomed) {
-        // If zoomed in, a tap un-zooms. A swipe (pan) does nothing.
-        if (!isSwipe) {
+        if (!isPan) {
             toggleZoom();
         }
         return;
     }
     
-    if (isSwipe) {
+    if (isPan) {
         clearTimeout(tapTimer);
         tapTimer = null;
-        if (deltaX < 0) { // Swipe Left
+        if (deltaX < -GESTURE_THRESHOLD) { // Swipe Left
             currentReviewIndex = (currentReviewIndex + 1) % capturedFrames.length;
-        } else { // Swipe Right
+        } else if (deltaX > GESTURE_THRESHOLD) { // Swipe Right
             currentReviewIndex = (currentReviewIndex - 1 + capturedFrames.length) % capturedFrames.length;
         }
         reviewImage.src = capturedFrames[currentReviewIndex];
     } else {
         // It's a tap. Check for double-tap.
         if (tapTimer === null) {
-            // First tap, set a timer to act on a single tap.
             tapTimer = setTimeout(() => {
-                tapTimer = null; // reset timer
+                tapTimer = null;
                 hideReviewImage();
             }, DOUBLE_TAP_DELAY);
         } else {
-            // Second tap arrived within the delay, it's a double-tap.
             clearTimeout(tapTimer);
             tapTimer = null;
             toggleZoom();
