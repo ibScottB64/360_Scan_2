@@ -41,14 +41,19 @@
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
     background-color: rgba(0,0,0,0.9);
-    display: none; /* Changed: Set to none by default to ensure it's hidden on start */
+    display: none;
     justify-content: center; align-items: center;
     z-index: 200;
-    cursor: pointer;
+    overflow: auto; /* Enable panning when zoomed */
  }
  #review-image {
     max-width: 95%; max-height: 95%;
     object-fit: contain;
+    cursor: pointer;
+ }
+ #review-image.zoomed-in {
+    max-width: none; max-height: none;
+    cursor: zoom-out;
  }
  </style>
 </head>
@@ -118,6 +123,9 @@
   const SMOOTHING_FACTOR = 0.1;
   let currentReviewIndex = -1;
   let touchStartX = 0;
+  let isZoomed = false;
+  let lastTapTime = 0;
+  const DOUBLE_TAP_DELAY = 300; // ms
 
   // --- Permission Handling (unchanged part) ---
   const permissionOverlay = document.getElementById('permission-overlay');
@@ -174,6 +182,15 @@
   progressDisplay.appendChild(frameDiv);
   }
   
+  function toggleZoom() {
+      isZoomed = !isZoomed;
+      reviewImage.classList.toggle('zoomed-in', isZoomed);
+      if (!isZoomed) {
+          reviewOverlay.scrollTop = 0;
+          reviewOverlay.scrollLeft = 0;
+      }
+  }
+
   function showReviewImage(index) {
     if ((scanState !== 'paused' && scanState !== 'complete') || index < 0 || index >= capturedFrames.length) return;
     currentReviewIndex = index;
@@ -186,6 +203,9 @@
   function hideReviewImage() {
     reviewOverlay.style.display = 'none';
     currentReviewIndex = -1;
+    if (isZoomed) {
+        toggleZoom(); // Ensure we are un-zoomed when hiding
+    }
     // Only show alignment tools again if the scan is not complete.
     if (scanState !== 'complete') {
         targetSVG.classList.remove('hidden');
@@ -355,21 +375,35 @@
   }, { passive: true });
 
   reviewOverlay.addEventListener('touchend', (e) => {
-    let touchEndX = e.changedTouches[0].screenX;
-    let deltaX = touchEndX - touchStartX;
+    const touchEndX = e.changedTouches[0].screenX;
+    const deltaX = touchEndX - touchStartX;
     const SWIPE_THRESHOLD = 50; // Minimum distance for a swipe in pixels
+    const isTap = Math.abs(deltaX) < SWIPE_THRESHOLD;
+    const currentTime = new Date().getTime();
+    const timeSinceLastTap = currentTime - lastTapTime;
 
-    if (deltaX < -SWIPE_THRESHOLD) {
-      // Swipe Left (next image)
-      currentReviewIndex = (currentReviewIndex + 1) % capturedFrames.length;
-      reviewImage.src = capturedFrames[currentReviewIndex];
-    } else if (deltaX > SWIPE_THRESHOLD) {
-      // Swipe Right (previous image)
-      currentReviewIndex = (currentReviewIndex - 1 + capturedFrames.length) % capturedFrames.length;
-      reviewImage.src = capturedFrames[currentReviewIndex];
-    } else {
-      // It's a tap, not a swipe
-      hideReviewImage();
+    if (isZoomed) {
+        if (isTap) { toggleZoom(); }
+        lastTapTime = currentTime;
+        return;
+    }
+
+    if (isTap && timeSinceLastTap < DOUBLE_TAP_DELAY) {
+        toggleZoom();
+        lastTapTime = 0; // Prevent a third tap from triggering a close
+    } else if (isTap) {
+        hideReviewImage();
+        lastTapTime = currentTime;
+    } else { // It's a swipe
+        if (deltaX < -SWIPE_THRESHOLD) {
+            // Swipe Left (next image)
+            currentReviewIndex = (currentReviewIndex + 1) % capturedFrames.length;
+        } else if (deltaX > SWIPE_THRESHOLD) {
+            // Swipe Right (previous image)
+            currentReviewIndex = (currentReviewIndex - 1 + capturedFrames.length) % capturedFrames.length;
+        }
+        reviewImage.src = capturedFrames[currentReviewIndex];
+        lastTapTime = 0; // Swipes shouldn't count towards double-tap timing
     }
   });
 
